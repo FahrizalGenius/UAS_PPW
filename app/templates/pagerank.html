@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}PageRank Analysis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+            <h1 class="page-title">Perhitungan Algoritma PageRank</h1>
+            <p class="page-subtitle">Kalkulasi nilai otoritas dan bobot peringkat setiap halaman web berbasis tautan masuk dan keluar</p>
+        </div>
+        <div class="d-flex gap-2">
+            {% if selected_session %}
+                <a href="{{ url_for('pagerank.download_all', session_id=selected_session.id) }}" class="btn btn-outline-success d-flex align-items-center gap-2">
+                    <i class="bi bi-file-earmark-arrow-down"></i>
+                    <span>Download CSV (Semua)</span>
+                </a>
+            {% endif %}
+            <a href="{{ url_for('pagerank.top10', session_id=selected_session.id if selected_session else '') }}" class="btn btn-outline-primary d-flex align-items-center gap-2">
+                <i class="bi bi-trophy"></i>
+                <span>Lihat Top 10 Ranking</span>
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="notice-box d-flex align-items-center gap-3">
+    <i class="bi bi-info-circle-fill fs-4 flex-shrink-0"></i>
+    <div>
+        <strong>Algoritma PageRank Aktif:</strong> Perhitungan matriks stokastik berarah dengan penanganan <em>dangling nodes</em> (redistribusi seragam \(1/N\)) menggunakan metode <em>Power Iteration</em>.
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Kolom Form Konfigurasi PageRank -->
+    <div class="col-lg-4">
+        <div class="card-custom">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-sliders2 text-primary"></i>
+                    <span>Parameter PageRank</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('pagerank.calculate') }}" method="POST">
+                    <div class="mb-3">
+                        <label for="session_id" class="form-label fw-semibold">Pilih Sesi Crawling</label>
+                        <select class="form-select" id="session_id" name="session_id" onchange="window.location.href='{{ url_for('pagerank.index') }}?session_id='+this.value">
+                            {% if all_sessions %}
+                                {% for s in all_sessions %}
+                                    <option value="{{ s.id }}" {% if selected_session and selected_session.id == s.id %}selected{% endif %}>
+                                        Sesi #{{ s.id }} ({{ s.total_crawled }} halaman) - {{ s.start_url|truncate(25) }}
+                                    </option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="">(Belum ada sesi crawling)</option>
+                            {% endif %}
+                        </select>
+                        <div class="form-text">
+                            Pilih sesi data crawling yang ingin dihitung PageRank-nya.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="damping_factor" class="form-label fw-semibold">Damping Factor (&alpha;)</label>
+                        <input type="number" step="0.01" min="0.1" max="0.99" class="form-control" 
+                               id="damping_factor" name="damping_factor" value="0.85" required>
+                        <div class="form-text">
+                            Peluang pengguna terus mengikuti link (standar: 0.85).
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="max_iterations" class="form-label fw-semibold">Maksimal Iterasi</label>
+                        <input type="number" min="10" max="1000" class="form-control" 
+                               id="max_iterations" name="max_iterations" value="100" required>
+                        <div class="form-text">
+                            Batas iterasi metode perkalian matriks (standar: 100).
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="tolerance" class="form-label fw-semibold">Toleransi Konvergensi (&epsilon;)</label>
+                        <input type="text" class="form-control font-monospace" 
+                               id="tolerance" name="tolerance" value="0.000001" required>
+                        <div class="form-text">
+                            Nilai toleransi perbedaan residual (standar: 1e-6).
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2">
+                        <i class="bi bi-cpu"></i>
+                        <span>Hitung PageRank</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card-custom">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-lightbulb text-warning"></i>
+                    <span>Formula PageRank</span>
+                </div>
+            </div>
+            <div class="card-body small text-muted">
+                <p class="mb-2">
+                    Rumus perhitungan PageRank untuk setiap halaman \(u\):
+                </p>
+                <div class="p-2 bg-light rounded text-center font-monospace small mb-2 border">
+                    PR(u) = (1 - d) / N + d &times; &sum; (PR(v) / L(v))
+                </div>
+                <p class="mb-0">
+                    Di mana \(d\) adalah damping factor, \(N\) jumlah seluruh node, dan \(L(v)\) jumlah outgoing links dari node \(v\).
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Kolom Tabel Hasil PageRank -->
+    <div class="col-lg-8">
+        {% if results %}
+            <!-- Visualisasi Skor Top 10 -->
+            <div class="card-custom mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-bar-chart-fill text-primary"></i>
+                        <span>Grafik Skor PageRank (Top 10 Teratas)</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <canvas id="top10Chart" height="110"></canvas>
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="card-custom">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-list-ol text-primary"></i>
+                    <span>Tabel Skor PageRank Seluruh Halaman</span>
+                </div>
+                {% if results %}
+                    <span class="badge bg-secondary">{{ results|length }} Halaman</span>
+                {% endif %}
+            </div>
+            <div class="card-body p-0">
+                {% if results %}
+                    <div class="table-responsive">
+                        <table class="table table-custom align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;" class="text-center">Rank</th>
+                                    <th>URL / Judul Halaman</th>
+                                    <th>Domain</th>
+                                    <th class="text-end" style="width: 140px;">Skor PageRank</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pr, pg in results %}
+                                    <tr>
+                                        <td class="text-center fw-bold">#{{ pr.ranking_position }}</td>
+                                        <td>
+                                            <div class="fw-semibold text-truncate" style="max-width: 320px;" title="{{ pg.title or pg.url }}">
+                                                {{ pg.title or '(Tanpa Judul)' }}
+                                            </div>
+                                            <small class="text-muted text-truncate d-block" style="max-width: 320px;">
+                                                <a href="{{ pg.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+                                                    {{ pg.url }}
+                                                </a>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-light text-secondary border">{{ pg.domain }}</span>
+                                        </td>
+                                        <td class="text-end fw-bold text-primary font-monospace">
+                                            {{ "%.8f"|format(pr.pagerank_score) }}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="empty-state py-5">
+                        <div class="empty-state-icon">
+                            <i class="bi bi-calculator"></i>
+                        </div>
+                        <div class="empty-state-title">Belum Ada Skor PageRank untuk Sesi Ini</div>
+                        <p class="empty-state-text">
+                            Pilih sesi crawling yang memiliki data halaman, lalu klik tombol "Hitung PageRank" di sebelah kiri.
+                        </p>
+                        <a href="{{ url_for('crawling.index') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-play-circle me-1"></i> Buka Web Crawling
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        {% if results %}
+        const top10Labels = [{% for pr, pg in results[:10] %}"#{{ pr.ranking_position }} {{ (pg.title[:22] if pg.title else pg.url[:22])|replace('"', '\\"') }}",{% endfor %}];
+        const top10Scores = [{% for pr, pg in results[:10] %}{{ pr.pagerank_score }},{% endfor %}];
+
+        const ctx = document.getElementById("top10Chart");
+        if (ctx) {
+            new Chart(ctx.getContext("2d"), {
+                type: "bar",
+                data: {
+                    labels: top10Labels,
+                    datasets: [{
+                        label: "Skor PageRank",
+                        data: top10Scores,
+                        backgroundColor: "rgba(59, 130, 246, 0.7)",
+                        borderColor: "rgba(59, 130, 246, 1)",
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            title: { display: true, text: "Nilai PageRank Score" }
+                        }
+                    }
+                }
+            });
+        }
+        {% endif %}
+    });
+</script>
+{% endblock %}

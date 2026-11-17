@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Adjacency Matrix{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+            <h1 class="page-title">Adjacency Matrix (Matriks Ketetanggaan)</h1>
+            <p class="page-subtitle">Representasi biner matriks keterhubungan antarnode halaman web dalam graf berarah</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <!-- Session Selector Dropdown -->
+            <label for="sessionSelect" class="small fw-semibold text-muted text-nowrap">Pilih Sesi:</label>
+            <select id="sessionSelect" class="form-select form-select-sm" style="min-width: 220px;" 
+                    onchange="window.location.href='{{ url_for('graph.matrix') }}?session_id='+this.value">
+                {% if sessions %}
+                    {% for s in sessions %}
+                        <option value="{{ s.id }}" {% if active_session and active_session.id == s.id %}selected{% endif %}>
+                            Sesi #{{ s.id }} ({{ s.total_crawled }} halaman)
+                        </option>
+                    {% endfor %}
+                {% else %}
+                    <option value="">(Belum ada sesi)</option>
+                {% endif %}
+            </select>
+
+            {% if active_session and stats.total_nodes > 0 %}
+                <a href="{{ url_for('graph.export_matrix', session_id=active_session.id) }}" class="btn btn-sm btn-primary d-flex align-items-center gap-1 text-nowrap">
+                    <i class="bi bi-download"></i>
+                    <span>Export CSV</span>
+                </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="notice-box d-flex align-items-center gap-3">
+    <i class="bi bi-info-circle-fill fs-4 flex-shrink-0"></i>
+    <div>
+        <strong>Penjelasan Matriks Berarah:</strong> Baris ke-\(i\) adalah halaman sumber (source), sedangkan kolom ke-\(j\) adalah halaman tujuan (target). Nilai <code>1</code> menunjukkan tautan langsung \(i \to j\), dan nilai <code>0</code> menunjukkan ketiadaan tautan.
+    </div>
+</div>
+
+<!-- Metrik Matriks -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Dimensi Matriks</div>
+                <div class="stat-value text-primary fs-4">{{ stats.total_nodes }} &times; {{ stats.total_nodes }}</div>
+            </div>
+            <div class="stat-icon primary"><i class="bi bi-grid-3x3"></i></div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Total Directed Edge (Nilai 1)</div>
+                <div class="stat-value text-success fs-4">{{ stats.total_edges }}</div>
+            </div>
+            <div class="stat-icon success"><i class="bi bi-check2-square"></i></div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Kerapatan Matriks (Density)</div>
+                <div class="stat-value text-info fs-4">{{ stats.density }}</div>
+            </div>
+            <div class="stat-icon info"><i class="bi bi-pie-chart"></i></div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-3">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Rata-rata Derajat</div>
+                <div class="stat-value text-warning fs-4">{{ stats.avg_degree }}</div>
+            </div>
+            <div class="stat-icon warning"><i class="bi bi-calculator"></i></div>
+        </div>
+    </div>
+</div>
+
+<!-- Card Tabel Preview Matriks -->
+<div class="card-custom">
+    <div class="card-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-table text-primary"></i>
+            <span>Preview Grid Matriks Ketetanggaan</span>
+            {% if preview.total_nodes > 0 %}
+                <span class="badge bg-light text-dark border">
+                    Menampilkan Node #{{ preview.start_idx }} - #{{ preview.end_idx - 1 }} dari {{ preview.total_nodes }}
+                </span>
+            {% endif %}
+        </div>
+        {% if preview.total_pages > 1 %}
+            <div class="small text-muted">
+                Halaman {{ preview.page }} / {{ preview.total_pages }}
+            </div>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        {% if preview.total_nodes > 0 %}
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm text-center align-middle mb-0" style="font-size: 0.825rem;">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="bg-secondary-subtle" style="width: 140px;">Source \ Target</th>
+                            {% for col in preview.col_nodes %}
+                                <th class="text-truncate" style="max-width: 90px;" title="[{{ col.index }}] {{ col.url }}">
+                                    [{{ col.index }}]<br/>
+                                    <span class="small fw-normal text-muted">P_{{ col.page_id }}</span>
+                                </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row_item in preview.row_nodes %}
+                            {% set row_i = loop.index0 %}
+                            <tr>
+                                <th class="table-light text-start text-truncate" style="max-width: 140px;" title="[{{ row_item.index }}] {{ row_item.url }}">
+                                    <strong>[{{ row_item.index }}]</strong> P_{{ row_item.page_id }}
+                                </th>
+                                {% for val in preview.sub_matrix[row_i] %}
+                                    <td class="{% if loop.index0 == row_i %}bg-light{% endif %}">
+                                        {% if val == 1 %}
+                                            <span class="badge bg-primary px-2 py-1">1</span>
+                                        {% else %}
+                                            <span class="text-muted opacity-50">0</span>
+                                        {% endif %}
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination Bar for Matrix Subgrid -->
+            {% if preview.total_pages > 1 %}
+                <div class="d-flex justify-content-between align-items-center p-3 border-top bg-light">
+                    <span class="small text-muted">
+                        Subgrid {{ preview.per_page }} &times; {{ preview.per_page }} per halaman
+                    </span>
+                    <nav aria-label="Matrix pagination">
+                        <ul class="pagination pagination-sm mb-0">
+                            <li class="page-item {% if preview.page <= 1 %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('graph.matrix', session_id=active_session.id if active_session else None, page=preview.page - 1, per_page=per_page) }}">
+                                    &laquo; Sebelumnya
+                                </a>
+                            </li>
+                            {% for p in range(1, preview.total_pages + 1) %}
+                                {% if p == preview.page or (p >= preview.page - 2 and p <= preview.page + 2) %}
+                                    <li class="page-item {% if p == preview.page %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('graph.matrix', session_id=active_session.id if active_session else None, page=p, per_page=per_page) }}">
+                                            {{ p }}
+                                        </a>
+                                    </li>
+                                {% endif %}
+                            {% endfor %}
+                            <li class="page-item {% if preview.page >= preview.total_pages %}disabled{% endif %}">
+                                <a class="page-link" href="{{ url_for('graph.matrix', session_id=active_session.id if active_session else None, page=preview.page + 1, per_page=per_page) }}">
+                                    Berikutnya &raquo;
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="empty-state py-5">
+                <div class="empty-state-icon"><i class="bi bi-grid-3x3-gap"></i></div>
+                <div class="empty-state-title">Matriks Ketetanggaan Kosong</div>
+                <p class="empty-state-text">
+                    Belum ada data halaman sukses pada sesi ini untuk dibentuk menjadi matriks.
+                </p>
+                <a href="{{ url_for('crawling.index') }}" class="btn btn-primary btn-sm">Buka Web Crawling</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Pemetaan Node ke Indeks Matriks -->
+{% if node_mapping %}
+<div class="card-custom mt-4">
+    <div class="card-header">
+        <div class="d-flex align-items-center gap-2">
+            <i class="bi bi-list-ol text-primary"></i>
+            <span>Daftar Pemetaan Node ke Indeks Baris/Kolom Matriks</span>
+        </div>
+        <span class="badge bg-secondary">{{ node_mapping|length }} Node Terdaftar</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive" style="max-height: 380px;">
+            <table class="table table-custom table-sm align-middle mb-0">
+                <thead class="sticky-top bg-light">
+                    <tr>
+                        <th style="width: 80px;" class="text-center">Indeks</th>
+                        <th style="width: 100px;">Page ID</th>
+                        <th>URL Halaman</th>
+                        <th>Domain</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in node_mapping %}
+                        <tr>
+                            <td class="text-center fw-bold text-primary">[{{ m.index }}]</td>
+                            <td class="fw-medium text-muted">#{{ m.page_id }}</td>
+                            <td>
+                                <a href="{{ m.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-truncate d-block" style="max-width: 480px;">
+                                    {{ m.url }}
+                                </a>
+                            </td>
+                            <td><span class="badge bg-light text-secondary border">{{ m.domain }}</span></td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+
+{% block title %}Graph Visualization{% endblock %}
+
+{% block styles %}
+<!-- Vis Network CSS (Local PyVis asset with CDN fallback) -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vis-network.css') }}">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.css" integrity="sha512-Y3b+1t4w8q5hL+1/pX/3s5m2jH95aB3A0U5h4y0R2aV+3R1jW8E6pA=" crossorigin="anonymous" onerror="this.onerror=null;">
+<style>
+    #visGraphContainer {
+        width: 100%;
+        height: 560px;
+        background-color: #f8fafc;
+        border-radius: 0 0 0.75rem 0.75rem;
+    }
+    .neighbor-list {
+        max-height: 140px;
+        overflow-y: auto;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+            <h1 class="page-title">Visualisasi Graf Berarah</h1>
+            <p class="page-subtitle">Pemetaan topologi interaktif relasi hyperlink antarhalaman website hasil web crawling</p>
+        </div>
+        <!-- Session Selector Dropdown -->
+        <div class="d-flex align-items-center gap-2">
+            <label for="sessionSelect" class="small fw-semibold text-muted text-nowrap">Pilih Sesi:</label>
+            <select id="sessionSelect" class="form-select form-select-sm" style="min-width: 220px;" 
+                    onchange="window.location.href='{{ url_for('graph.index') }}?session_id='+this.value">
+                {% if sessions %}
+                    {% for s in sessions %}
+                        <option value="{{ s.id }}" {% if active_session and active_session.id == s.id %}selected{% endif %}>
+                            Sesi #{{ s.id }} ({{ s.total_crawled }} halaman) - {{ s.started_at.strftime('%d/%m %H:%M') if s.started_at else '' }}
+                        </option>
+                    {% endfor %}
+                {% else %}
+                    <option value="">(Belum ada sesi)</option>
+                {% endif %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- 6 Metrik Statistik Graf -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Total Node (N)</div>
+                <div class="stat-value text-primary fs-4">{{ stats.total_nodes }}</div>
+            </div>
+            <div class="stat-icon primary" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-circle"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Total Edges (E)</div>
+                <div class="stat-value text-info fs-4">{{ stats.total_edges }}</div>
+            </div>
+            <div class="stat-icon info" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-arrow-right"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Node Terisolasi</div>
+                <div class="stat-value text-secondary fs-4">{{ stats.isolated_nodes }}</div>
+            </div>
+            <div class="stat-icon warning" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-dash-circle"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">In-Degree Nol</div>
+                <div class="stat-value text-danger fs-4">{{ stats.in_degree_zero_nodes }}</div>
+            </div>
+            <div class="stat-icon danger" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-box-arrow-in-down-left"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Out-Degree Nol</div>
+                <div class="stat-value text-warning fs-4">{{ stats.out_degree_zero_nodes }}</div>
+            </div>
+            <div class="stat-icon warning" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-box-arrow-up-right"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-6 col-md-4 col-xl-2">
+        <div class="stat-card p-3">
+            <div>
+                <div class="stat-label">Rata-rata Derajat</div>
+                <div class="stat-value text-success fs-4">{{ stats.avg_degree }}</div>
+            </div>
+            <div class="stat-icon success" style="width: 38px; height: 38px; font-size: 1.15rem;">
+                <i class="bi bi-calculator"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Kolom Visualisasi Canvas -->
+    <div class="col-lg-8">
+        <div class="card-custom mb-0">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-diagram-3-fill text-primary"></i>
+                    <span>Kanvas Graf Interaktif (PyVis / Vis.js)</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" id="btnTogglePhysics" title="Kunci / Hentikan Gerakan Graf">
+                        <i class="bi bi-pause-fill" id="physicsIcon"></i> <span id="physicsText">Kunci Graf</span>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="btnFitGraph" title="Pusatkan Graf">
+                        <i class="bi bi-arrows-fullscreen"></i> Fit
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="btnZoomIn" title="Perbesar">
+                        <i class="bi bi-zoom-in"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" id="btnZoomOut" title="Perkecil">
+                        <i class="bi bi-zoom-out"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0 position-relative">
+                {% if stats.total_nodes > 0 %}
+                    <div id="visGraphContainer"></div>
+                {% elif no_pages %}
+                    <div class="empty-state py-5">
+                        <div class="empty-state-icon text-warning"><i class="bi bi-exclamation-triangle"></i></div>
+                        <div class="empty-state-title">Sesi Ini Belum Memiliki Halaman Sukses</div>
+                        <p class="empty-state-text">Sesi yang dipilih tidak memiliki halaman dengan status 'success'.</p>
+                        <a href="{{ url_for('crawling.index') }}" class="btn btn-primary btn-sm">Buka Web Crawling</a>
+                    </div>
+                {% else %}
+                    <div class="empty-state py-5">
+                        <div class="empty-state-icon"><i class="bi bi-diagram-3"></i></div>
+                        <div class="empty-state-title">Belum Ada Data Graf</div>
+                        <p class="empty-state-text">Silakan lakukan penelusuran di menu Web Crawling terlebih dahulu.</p>
+                        <a href="{{ url_for('crawling.index') }}" class="btn btn-primary btn-sm">Mulai Crawling</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Kolom Sidebar Detail Node -->
+    <div class="col-lg-4">
+        <div class="card-custom mb-0 h-100">
+            <div class="card-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-info-circle text-primary"></i>
+                    <span>Detail Node Terpilih</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Search Node Input -->
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold text-muted">Cari Node / URL</label>
+                    <div class="input-group input-group-sm">
+                        <input type="text" class="form-control" id="nodeSearchInput" placeholder="Ketik kata kunci judul / URL...">
+                        <button class="btn btn-outline-secondary" id="btnSearchNode" type="button"><i class="bi bi-search"></i></button>
+                    </div>
+                    <div id="searchFeedback" class="small text-danger mt-1" style="display: none;">Node tidak ditemukan.</div>
+                </div>
+
+                <!-- Card Informasi Node -->
+                <div id="defaultNodeHint" class="p-3 bg-light rounded text-center text-muted small mb-3">
+                    <i class="bi bi-hand-index-thumb fs-3 d-block mb-1 text-secondary"></i>
+                    Klik salah satu lingkaran node pada kanvas untuk menampilkan informasi lengkap URL dan relasi tautan.
+                </div>
+
+                <div id="selectedNodeDetails" style="display: none;">
+                    <div class="p-2 border rounded bg-light mb-3">
+                        <div class="small text-muted">Judul Halaman:</div>
+                        <div class="fw-bold text-dark text-truncate" id="nodeDetailTitle">-</div>
+                        <div class="small text-muted mt-1">URL:</div>
+                        <div class="small text-break">
+                            <a href="#" target="_blank" rel="noopener noreferrer" id="nodeDetailUrl" class="text-primary text-decoration-none"></a>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top small text-muted">
+                            <span>ID: <strong id="nodeDetailId">#</strong></span>
+                            <span>Level Depth: <strong id="nodeDetailDepth">0</strong></span>
+                            <span>Domain: <strong id="nodeDetailDomain"></strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Incoming Links Section -->
+                    <div class="border rounded p-2 mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold text-success">
+                                <i class="bi bi-box-arrow-in-right me-1"></i> Incoming Links (In-Degree)
+                            </span>
+                            <span class="badge bg-success" id="nodeDetailInDeg">0</span>
+                        </div>
+                        <div class="neighbor-list" id="nodeDetailIncomingList">
+                            <span class="text-muted small">Tidak ada incoming links.</span>
+                        </div>
+                    </div>
+
+                    <!-- Outgoing Links Section -->
+                    <div class="border rounded p-2">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-semibold text-primary">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> Outgoing Links (Out-Degree)
+                            </span>
+                            <span class="badge bg-primary" id="nodeDetailOutDeg">0</span>
+                        </div>
+                        <div class="neighbor-list" id="nodeDetailOutgoingList">
+                            <span class="text-muted small">Tidak ada outgoing links.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Vis Network JS (Local asset with CDN fallback) -->
+<script src="{{ url_for('static', filename='js/vis-network.min.js') }}"></script>
+<script>
+    if (typeof vis === 'undefined') {
+        document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/dist/vis-network.min.js"><\/script>');
+    }
+</script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (typeof vis === "undefined") {
+            console.error("Library vis-network gagal dimuat.");
+            return;
+        }
+
+        const visDataRaw = {{ vis_data_json|safe }};
+        const container = document.getElementById("visGraphContainer");
+
+        if (!container || !visDataRaw || !visDataRaw.nodes || visDataRaw.nodes.length === 0) {
+            return;
+        }
+
+        const data = {
+            nodes: new vis.DataSet(visDataRaw.nodes),
+            edges: new vis.DataSet(visDataRaw.edges)
+        };
+
+        const options = visDataRaw.options || {};
+        const network = new vis.Network(container, data, options);
+        const nodeDetails = visDataRaw.node_details || {};
+
+        let physicsEnabled = true;
+
+        function setPhysics(enable) {
+            physicsEnabled = enable;
+            network.setOptions({ physics: { enabled: enable } });
+            const btn = document.getElementById("btnTogglePhysics");
+            const icon = document.getElementById("physicsIcon");
+            const text = document.getElementById("physicsText");
+            if (!btn || !icon || !text) return;
+            if (enable) {
+                btn.className = "btn btn-sm btn-outline-warning";
+                icon.className = "bi bi-pause-fill";
+                text.textContent = "Kunci Graf";
+            } else {
+                btn.className = "btn btn-sm btn-outline-success";
+                icon.className = "bi bi-play-fill";
+                text.textContent = "Gerakkan Graf";
+            }
+        }
+
+        // Otomatis bekukan gerakan graf begitu penataan posisi awal stabil
+        network.once("stabilizationIterationsDone", function () {
+            setPhysics(false);
+        });
+
+        // Fallback: bekukan setelah 2.5 detik agar graf tidak berputar terus
+        setTimeout(() => {
+            if (physicsEnabled) {
+                setPhysics(false);
+            }
+        }, 2500);
+
+        const toggleBtn = document.getElementById("btnTogglePhysics");
+        if (toggleBtn) {
+            toggleBtn.addEventListener("click", () => setPhysics(!physicsEnabled));
+        }
+
+        // Toolbar Buttons
+        document.getElementById("btnFitGraph").addEventListener("click", () => network.fit({ animation: true }));
+        document.getElementById("btnZoomIn").addEventListener("click", () => {
+            network.moveTo({ scale: network.getScale() * 1.3, animation: true });
+        });
+        document.getElementById("btnZoomOut").addEventListener("click", () => {
+            network.moveTo({ scale: network.getScale() / 1.3, animation: true });
+        });
+
+        // Click Event on Node
+        network.on("click", function (params) {
+            if (params.nodes.length > 0) {
+                const nodeId = params.nodes[0];
+                showNodeDetails(nodeId);
+            }
+        });
+
+        // Node Search Handling
+        function searchNode() {
+            const query = document.getElementById("nodeSearchInput").value.trim().toLowerCase();
+            const feedback = document.getElementById("searchFeedback");
+            feedback.style.display = "none";
+
+            if (!query) return;
+
+            let matchedId = null;
+            for (const [id, details] of Object.entries(nodeDetails)) {
+                if (details.url.toLowerCase().includes(query) || details.title.toLowerCase().includes(query)) {
+                    matchedId = parseInt(id);
+                    break;
+                }
+            }
+
+            if (matchedId) {
+                network.selectNodes([matchedId]);
+                network.focus(matchedId, { scale: 1.25, animation: true });
+                showNodeDetails(matchedId);
+            } else {
+                feedback.style.display = "block";
+            }
+        }
+
+        document.getElementById("btnSearchNode").addEventListener("click", searchNode);
+        document.getElementById("nodeSearchInput").addEventListener("keypress", function (e) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                searchNode();
+            }
+        });
+
+        function showNodeDetails(nodeId) {
+            const details = nodeDetails[String(nodeId)];
+            if (!details) return;
+
+            document.getElementById("defaultNodeHint").style.display = "none";
+            document.getElementById("selectedNodeDetails").style.display = "block";
+
+            document.getElementById("nodeDetailTitle").textContent = details.title || "(Tanpa Judul)";
+            const urlEl = document.getElementById("nodeDetailUrl");
+            urlEl.textContent = details.url;
+            urlEl.href = details.url;
+
+            document.getElementById("nodeDetailId").textContent = "#" + details.id;
+            document.getElementById("nodeDetailDepth").textContent = details.depth;
+            document.getElementById("nodeDetailDomain").textContent = details.domain;
+            document.getElementById("nodeDetailInDeg").textContent = details.in_degree;
+            document.getElementById("nodeDetailOutDeg").textContent = details.out_degree;
+
+            // Render Incoming Links
+            const inList = document.getElementById("nodeDetailIncomingList");
+            if (details.incoming && details.incoming.length > 0) {
+                inList.innerHTML = details.incoming.map(n => 
+                    `<div class="text-truncate mb-1"><a href="${n.url}" target="_blank" class="text-decoration-none text-success">&bull; ${n.title || n.url}</a></div>`
+                ).join("");
+            } else {
+                inList.innerHTML = '<span class="text-muted small">Tidak ada incoming links.</span>';
+            }
+
+            // Render Outgoing Links
+            const outList = document.getElementById("nodeDetailOutgoingList");
+            if (details.outgoing && details.outgoing.length > 0) {
+                outList.innerHTML = details.outgoing.map(n => 
+                    `<div class="text-truncate mb-1"><a href="${n.url}" target="_blank" class="text-decoration-none text-primary">&bull; ${n.title || n.url}</a></div>`
+                ).join("");
+            } else {
+                outList.innerHTML = '<span class="text-muted small">Tidak ada outgoing links.</span>';
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dashboard{% endblock %} - PPW PageRank</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Custom Application CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    <div id="wrapper">
+        <!-- Sidebar Navigation -->
+        <nav id="sidebar">
+            <a href="{{ url_for('dashboard.index') }}" class="sidebar-brand">
+                <i class="bi bi-diagram-3-fill"></i>
+                <span class="brand-text">PPW PageRank</span>
+            </a>
+
+            <ul class="sidebar-menu">
+                <li class="sidebar-heading">Menu Utama</li>
+                
+                <li class="sidebar-item">
+                    <a href="{{ url_for('dashboard.index') }}" class="sidebar-link {% if request.endpoint == 'dashboard.index' %}active{% endif %}">
+                        <i class="bi bi-speedometer2"></i>
+                        <span class="link-text">Dashboard</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('crawling.index') }}" class="sidebar-link {% if request.endpoint and request.endpoint.startswith('crawling.') %}active{% endif %}">
+                        <i class="bi bi-globe2"></i>
+                        <span class="link-text">Web Crawling</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('pages.index') }}" class="sidebar-link {% if request.endpoint and request.endpoint.startswith('pages.') %}active{% endif %}">
+                        <i class="bi bi-file-earmark-text"></i>
+                        <span class="link-text">Data Website</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-heading">Analisis Graf & Visualisasi</li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('graph.index') }}" class="sidebar-link {% if request.endpoint == 'graph.index' %}active{% endif %}">
+                        <i class="bi bi-diagram-3"></i>
+                        <span class="link-text">Graph Visualization</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('graph.matrix') }}" class="sidebar-link {% if request.endpoint == 'graph.matrix' %}active{% endif %}">
+                        <i class="bi bi-grid-3x3"></i>
+                        <span class="link-text">Adjacency Matrix</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('analysis.graph_analysis') }}" class="sidebar-link {% if request.endpoint == 'analysis.graph_analysis' %}active{% endif %}">
+                        <i class="bi bi-graph-up-arrow"></i>
+                        <span class="link-text">Graph Analysis</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-heading">Perhitungan PageRank</li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('pagerank.index') }}" class="sidebar-link {% if request.endpoint == 'pagerank.index' %}active{% endif %}">
+                        <i class="bi bi-calculator"></i>
+                        <span class="link-text">PageRank Analysis</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('pagerank.top10') }}" class="sidebar-link {% if request.endpoint == 'pagerank.top10' %}active{% endif %}">
+                        <i class="bi bi-trophy"></i>
+                        <span class="link-text">Top 10 Ranking</span>
+                    </a>
+                </li>
+
+                <li class="sidebar-heading">Ekspor Data</li>
+
+                <li class="sidebar-item">
+                    <a href="{{ url_for('analysis.downloads') }}" class="sidebar-link {% if request.endpoint == 'analysis.downloads' %}active{% endif %}">
+                        <i class="bi bi-download"></i>
+                        <span class="link-text">Download Results</span>
+                    </a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <div>Versi 1.0.0 (Tahap 2)</div>
+                <div class="text-white-50 small mt-1">UAS Pengolahan &amp; Penelusuran Web</div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <div id="content-wrapper">
+            <!-- Top Navbar -->
+            <header class="top-navbar">
+                <div class="d-flex align-items-center gap-3">
+                    <button class="btn-sidebar-toggle" id="sidebarToggle" aria-label="Toggle Sidebar">
+                        <i class="bi bi-list"></i>
+                    </button>
+                    <span class="fw-semibold text-secondary d-none d-sm-inline">
+                        Sistem Web Crawling &amp; PageRank
+                    </span>
+                </div>
+                
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success-subtle text-success border border-success-subtle d-flex align-items-center gap-1">
+                        <span class="p-1 bg-success rounded-circle"></span>
+                        MySQL Aktif
+                    </span>
+                    <a href="https://github.com/FahrizalGenius/UAS_PPW" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" title="Repository GitHub">
+                        <i class="bi bi-github"></i>
+                        <span class="d-none d-md-inline">GitHub</span>
+                    </a>
+                </div>
+            </header>
+
+            <!-- Main Body -->
+            <main class="main-content">
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        <div class="mb-4">
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ category if category != 'message' else 'info' }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                {% endwith %}
+
+                <!-- Content Block -->
+                {% block content %}{% endblock %}
+            </main>
+
+            <!-- Footer -->
+            <footer class="app-footer">
+                <div>&copy; 2024 <strong>PPW-PageRank</strong>. Dikembangkan untuk mata kuliah Pengolahan dan Penelusuran Web. Target: <code>https://trunojoyo.ac.id/</code></div>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom Application JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

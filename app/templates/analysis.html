@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Graph Analysis{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div>
+            <h1 class="page-title">Analisis Properti Graf</h1>
+            <p class="page-subtitle">Metrik struktur topologi jaringan web, sentralitas derajat, dan keterhubungan graf</p>
+        </div>
+        <div>
+            <form class="d-flex" method="get" action="{{ url_for('analysis.graph_analysis') }}">
+                <select class="form-select me-2" name="session_id" onchange="this.form.submit()">
+                    <option value="" disabled selected>Pilih Sesi Crawling</option>
+                    {% for sess in all_sessions %}
+                        <option value="{{ sess.id }}" {% if latest_session and sess.id == latest_session.id %}selected{% endif %}>Sesi #{{ sess.id }} – {{ sess.start_url|truncate(30) }}</option>
+                    {% endfor %}
+                </select>
+                <noscript><button class="btn btn-primary" type="submit">Tampilkan</button></noscript>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% if analysis %}
+    {% set stats = analysis.basic_stats %}
+    {% set degree_dist = analysis.degree_distribution %}
+    {% set clustering = analysis.clustering %}
+    {% set scc = analysis.scc %}
+    {% set node_table = analysis.node_table %}
+
+    <!-- Statistik Utama -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Total Node</div>
+                <div class="stat-value text-primary">{{ stats.total_nodes }}</div>
+                <div class="stat-icon primary"><i class="bi bi-hexagon"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Total Edge</div>
+                <div class="stat-value text-info">{{ stats.total_edges }}</div>
+                <div class="stat-icon info"><i class="bi bi-arrow-right-left"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Avg In‑Degree</div>
+                <div class="stat-value text-success">{{ stats.avg_in_degree if stats.avg_in_degree is defined else stats.avg_degree }}</div>
+                <div class="stat-icon success"><i class="bi bi-arrow-up"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Avg Out‑Degree</div>
+                <div class="stat-value text-warning">{{ stats.avg_out_degree if stats.avg_out_degree is defined else stats.avg_degree }}</div>
+                <div class="stat-icon warning"><i class="bi bi-arrow-down"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Avg Total Degree</div>
+                <div class="stat-value text-danger">{{ stats.avg_degree }}</div>
+                <div class="stat-icon danger"><i class="bi bi-speedometer2"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Network Density</div>
+                <div class="stat-value text-primary">{{ stats.density }}</div>
+                <div class="stat-icon primary"><i class="bi bi-pie-chart"></i></div>
+            </div>
+        </div>
+        <div class="col-md-4 col-xl-3">
+            <div class="stat-card">
+                <div class="stat-label">Isolated Nodes</div>
+                <div class="stat-value text-muted">{{ stats.isolated_nodes }}</div>
+                <div class="stat-icon secondary"><i class="bi bi-circle"></i></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Distribusi Derajat -->
+    <div class="row g-3 mb-4">
+        <div class="col-lg-4">
+            <div class="card-custom h-100">
+                <div class="card-header"><span class="fw-semibold">In‑Degree Distribution</span></div>
+                <div class="card-body"><canvas id="inDegreeChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card-custom h-100">
+                <div class="card-header"><span class="fw-semibold">Out‑Degree Distribution</span></div>
+                <div class="card-body"><canvas id="outDegreeChart"></canvas></div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card-custom h-100">
+                <div class="card-header"><span class="fw-semibold">Total‑Degree Distribution</span></div>
+                <div class="card-body"><canvas id="totalDegreeChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clustering Coefficient -->
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Clustering Coefficient</h5>
+            <span class="badge bg-success">Rata‑Rata: {{ clustering.average }}</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:300px; overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Page ID</th><th>URL</th><th>Clustering</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for nid, coeff in clustering.per_node|dictsort(false, 'value')|reverse %}
+                        {% set matched_node = node_table|selectattr('page_id','equalto',nid)|first %}
+                        <tr>
+                            <td>{{ nid }}</td>
+                            <td>
+                                {% if matched_node %}
+                                <a href="{{ matched_node.url }}" target="_blank" class="text-truncate" style="max-width:300px; display:inline-block;">{{ matched_node.url }}</a>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                            <td>{{ coeff }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="p-3 text-muted small border-top">Koefisien clustering mengukur sejauh mana tetangga sebuah node saling terhubung. Nilai 1 berarti semua tetangga saling terhubung, nilai 0 berarti tidak ada koneksi antar tetangga.</div>
+        </div>
+    </div>
+
+    <!-- SCC & Shortest Path -->
+    <div class="card-custom mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Strongly Connected Components (SCC)</h5>
+        </div>
+        <div class="card-body">
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Status Keterhubungan Kuat:</span>
+                    <strong>{% if scc.is_strongly_connected %}Terhubung Kuat (1 Komponen){% else %}Terbagi Lebih dari 1 Komponen{% endif %}</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Ukuran SCC Terbesar:</span>
+                    <strong>{{ scc.largest_scc_size }} node ({{ scc.largest_scc_percentage }}%)</strong>
+                </li>
+                <li class="list-group-item d-flex justify-content-between">
+                    <span>Average Shortest Path Length (Largest SCC):</span>
+                    <strong>{{ scc.average_path_length if scc.average_path_length is not none else '-' }}</strong>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Tabel Analisis Per‑Node -->
+    <div class="card-custom mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Analisis Per‑Node</h5>
+            <input type="text" id="nodeSearch" class="form-control form-control-sm w-25" placeholder="Cari URL / Domain..." onkeyup="filterNodeTable()">
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+                <table class="table table-sm table-hover mb-0" id="nodeTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Page ID</th>
+                            <th>URL</th>
+                            <th>Domain</th>
+                            <th>In‑Degree</th>
+                            <th>Out‑Degree</th>
+                            <th>Total Degree</th>
+                            <th>Clustering</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in node_table %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ row.page_id }}</td>
+                            <td><a href="{{ row.url }}" target="_blank" class="text-truncate" style="max-width:300px; display:inline-block;">{{ row.url }}</a></td>
+                            <td>{{ row.domain }}</td>
+                            <td>{{ row.in_degree }}</td>
+                            <td>{{ row.out_degree }}</td>
+                            <td>{{ row.total_degree }}</td>
+                            <td>{{ row.clustering_coeff }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card-footer text-muted small">Tabel dapat di-filter menggunakan kotak pencarian di atas.</div>
+    </div>
+
+    <!-- Chart.js Script -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const degreeData = {{ degree_dist|tojson }};
+        function renderChart(ctxId, label, data) {
+            const el = document.getElementById(ctxId);
+            if (!el) return;
+            const ctx = el.getContext('2d');
+            const labels = data.map(d => d.degree);
+            const frequencies = data.map(d => d.frequency);
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: frequencies,
+                        backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { tooltip: { mode: 'index', intersect: false } },
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Frekuensi Node' } } }
+                }
+            });
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            renderChart('inDegreeChart', 'In‑Degree Distribution', degreeData.in || []);
+            renderChart('outDegreeChart', 'Out‑Degree Distribution', degreeData.out || []);
+            renderChart('totalDegreeChart', 'Total‑Degree Distribution', degreeData.total || []);
+        });
+        function filterNodeTable() {
+            const query = document.getElementById('nodeSearch').value.toLowerCase();
+            const rows = document.querySelectorAll('#nodeTable tbody tr');
+            rows.forEach(row => {
+                const url = row.cells[2].innerText.toLowerCase();
+                const domain = row.cells[3].innerText.toLowerCase();
+                if (url.includes(query) || domain.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    </script>
+{% else %}
+    <div class="card-custom">
+        <div class="card-body p-0">
+            <div class="empty-state py-5">
+                <div class="empty-state-icon"><i class="bi bi-graph-up"></i></div>
+                <div class="empty-state-title">Belum Ada Data Graf untuk Dianalisis</div>
+                <p class="empty-state-text">Silakan jalankan proses crawling terlebih dahulu.</p>
+                <a href="{{ url_for('crawling.index') }}" class="btn btn-primary btn-sm">Mulai Web Crawling</a>
+            </div>
+        </div>
+    </div>
+{% endif %}
+{% endblock %}
